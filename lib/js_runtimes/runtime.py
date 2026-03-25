@@ -185,14 +185,18 @@ class Runtime(abc.ABC):
             self.__progress_close__()
 
     def _extract(self, path):
-        if zipfile.is_zipfile(path):
-            with zipfile.ZipFile(path, "r") as zip_file:
-                return zip_file.read(self._binary_path())
-        elif tarfile.is_tarfile(path):
-            with tarfile.open(path, "r") as tar_file:
-                return tar_file.extractfile(self._binary_path()).read()
-        else:
-            raise RuntimeError("Unsupported archive type")
+        xbmc.executebuiltin("ActivateWindow(busydialognocancel)")
+        try:
+            if zipfile.is_zipfile(path):
+                with zipfile.ZipFile(path, "r") as zip_file:
+                    return zip_file.read(self._binary_path())
+            elif tarfile.is_tarfile(path):
+                with tarfile.open(path, "r") as tar_file:
+                    return tar_file.extractfile(self._binary_path()).read()
+            else:
+                raise RuntimeError("Unsupported archive type")
+        finally:
+            xbmc.executebuiltin("Dialog.Close(busydialognocancel)")
 
     @property
     def outdated(self):
