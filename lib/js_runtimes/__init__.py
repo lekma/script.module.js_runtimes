@@ -207,11 +207,20 @@ def infos():
     return {k: v.info() for k, v in __runtimes__.items()}
 
 
-def runtimes(default="deno"):
+def runtimes(key="deno"):
     try:
-        default = __runtimes__[default]
+        rt = __runtimes__[key]
     except KeyError:
-        raise RuntimeError(f"JavaScript runtime '{default}' not found") from None
+        raise RuntimeError(f"JavaScript runtime '{key}' not found") from None
     else:
-        default.check()
+        rt.check()
     return {k: v.runtime() for k, v in __runtimes__.items() if v.installed}
+
+
+def uninstall(key):
+    try:
+        rt = __runtimes__[key]
+    except KeyError:
+        raise RuntimeError(f"JavaScript runtime '{key}' not found") from None
+    else:
+        rt.uninstall()
