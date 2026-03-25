@@ -8,6 +8,12 @@ from .runtime import Runtime
 
 
 # ------------------------------------------------------------------------------
+
+__machine__ = platform.machine()
+#__system__ = platform.system().lower()
+
+
+# ------------------------------------------------------------------------------
 # BunRuntime
 
 class BunRuntime(Runtime):
@@ -20,41 +26,41 @@ class BunRuntime(Runtime):
 
     # --------------------------------------------------------------------------
 
-    @classmethod
-    def _current(cls):
+    def _get_latest(self):
+        return json.loads(super()._get_latest())["tag_name"].split("-")[-1]
+
+    # --------------------------------------------------------------------------
+
+    def _current_version_args(self):
         return (("-p", "Bun.version"), {})
 
-    # --------------------------------------------------------------------------
-
-    @classmethod
-    def _latest(cls):
+    def _latest_version_url(self):
         # https://github.com/oven-sh/bun/raw/refs/heads/main/LATEST
-        return f"{cls._url().path}/raw/refs/heads/main/LATEST"
-
-    # --------------------------------------------------------------------------
+        #return self._url._replace(
+        #    path=f"{self._url.path}/raw/refs/heads/main/LATEST"
+        #).geturl()
+        return "https://api.github.com/repos/oven-sh/bun/releases/latest"
 
     __machines__ = {
-        "x86_64": "x64",
-        "arm64": "aarch64"
+        "arm64": "aarch64",
+        "x86_64": "x64"
     }
 
-    __target__ = "bun-{}-{}".format(
-        platform.system().lower(),
-        __machines__.get((machine := platform.machine()), machine)
-    )
-
-    @classmethod
-    def _target(cls):
-        # https://github.com/oven-sh/bun/releases/download/bun-v1.3.10/bun-linux-x64.zip
-        return "{}/releases/download/bun-v{}/{}".format(
-            cls._url().path, cls.latest(), cls.__target__
+    def __target__(self):
+        return "bun-linux-{}".format(
+            self.__machines__.get(__machine__, __machine__)
         )
 
-    # --------------------------------------------------------------------------
+    def _download_url(self):
+        # https://github.com/oven-sh/bun/releases/download/bun-v1.3.10/bun-linux-x64.zip
+        return self._url._replace(
+            path="{}/releases/download/bun-{}/{}.zip".format(
+                self._url.path, self.latest, self.__target__()
+            )
+        ).geturl()
 
-    @classmethod
-    def _zip_name(cls):
-        return (cls.__target__,) + super()._zip_name()
+    def _binary_path(self):
+        return f"{self.__target__()}/bun"
 
 
 # ------------------------------------------------------------------------------
@@ -70,41 +76,74 @@ class DenoRuntime(Runtime):
 
     # --------------------------------------------------------------------------
 
-    @classmethod
-    def _current(cls):
+    def _current_version_args(self):
         return (("eval", "-p", "Deno.version.deno"), {})
 
-    # --------------------------------------------------------------------------
-
-    @classmethod
-    def _latest(cls):
+    def _latest_version_url(self):
         # https://dl.deno.land/release-latest.txt
-        return "release-latest.txt"
+        return self._url._replace(path="release-latest.txt").geturl()
 
-    # --------------------------------------------------------------------------
-
-    __systems__ = {
-        "Linux": {
-            "suffix": "unknown-linux-gnu"
-        },
-        "Darwin": {
-            "suffix": "apple-darwin",
-            "machines": {
-                "arm64": "aarch64"
-            }
-        }
+    __machines__ = {
+        "arm64": "aarch64"
     }
 
-    @classmethod
-    def _target(cls):
+    def __target__(self):
+        return "deno-{}-unknown-linux-gnu".format(
+            self.__machines__.get(__machine__, __machine__)
+        )
+
+    def _download_url(self):
         # https://dl.deno.land/release/v2.7.7/deno-x86_64-unknown-linux-gnu.zip
-        system = cls.__systems__[platform.system()]
-        machine = system.get("machines", {}).get(
-            (machine := platform.machine()), machine
+        return self._url._replace(
+            path="release/{}/{}.zip".format(self.latest, self.__target__())
+        ).geturl()
+
+    def _binary_path(self):
+        return "deno"
+
+
+# ------------------------------------------------------------------------------
+# NodeRuntime
+
+class NodeRuntime(Runtime):
+
+    __infos__ = {
+        "key": "node",
+        "name": "Node.js",
+        "url": "https://nodejs.org/"
+    }
+
+    # --------------------------------------------------------------------------
+
+    def _get_latest(self):
+        return json.loads(super()._get_latest())[0]["version"]
+
+    # --------------------------------------------------------------------------
+
+    def _current_version_args(self):
+        return (("-p", "process.version"), {})
+
+    def _latest_version_url(self):
+        # https://nodejs.org/dist/index.json
+        return self._url._replace(path="dist/index.json").geturl()
+
+    __machines__ = {
+        "x86_64": "x64"
+    }
+
+    def __target__(self):
+        return "node-{}-linux-{}".format(
+            self.latest, self.__machines__.get(__machine__, __machine__)
         )
-        return "release/{}/deno-{}-{}".format(
-            cls.latest(), machine, system["suffix"]
-        )
+
+    def _download_url(self):
+        # https://nodejs.org/dist/v25.8.1/node-v25.8.1-linux-x64.tar.xz
+        return self._url._replace(
+            path="dist/{}/{}.tar.xz".format(self.latest, self.__target__())
+        ).geturl()
+
+    def _binary_path(self):
+        return f"{self.__target__()}/bin/node"
 
 
 # ------------------------------------------------------------------------------
@@ -121,53 +160,46 @@ class QuickJSRuntime(Runtime):
 
     # --------------------------------------------------------------------------
 
-    @classmethod
-    def _get_current(cls):
+    def _get_current(self):
         return super()._get_current().splitlines()[0].split(" ")[-1]
 
-    @classmethod
-    def _current(cls):
-        return (("-h", ), {"check": False})
-
-    # --------------------------------------------------------------------------
-
-    @classmethod
-    def _get_latest(cls):
+    def _get_latest(self):
         return json.loads(super()._get_latest())["version"]
 
-    @classmethod
-    def _latest(cls):
-        # https://bellard.org/quickjs/binary_releases/LATEST.json
-        return f"{cls._url().path}/binary_releases/LATEST.json"
-
-    # --------------------------------------------------------------------------
-
-    __systems__ = {
-        "Linux": "linux",
-        "Windows": "win"
-    }
-
-    @classmethod
-    def _target(cls):
-        # https://bellard.org/quickjs/binary_releases/quickjs-linux-x86_64-2025-09-13.zip
-        return "{}/binary_releases/quickjs-{}-{}-{}".format(
-            cls._url().path,
-            cls.__systems__[platform.system()],
-            platform.machine(),
-            cls.latest()
-        )
-
-    # --------------------------------------------------------------------------
-
-    @classmethod
-    def _version(cls, version):
+    def _version(self, version):
         return super()._version(version.replace("-", "."))
+
+    # --------------------------------------------------------------------------
+
+    def _current_version_args(self):
+        return (("-h", ), {"check": False})
+
+    def _latest_version_url(self):
+        # https://bellard.org/quickjs/binary_releases/LATEST.json
+        return self._url._replace(
+            path=f"{self._url.path}//binary_releases/LATEST.json"
+        ).geturl()
+
+    def __target__(self):
+        return "quickjs-linux-{}".format(__machine__)
+
+    def _download_url(self):
+        # https://bellard.org/quickjs/binary_releases/quickjs-linux-x86_64-2025-09-13.zip
+        return self._url._replace(
+            path="{}/binary_releases/{}-{}.zip".format(
+                self._url.path, self.__target__(), self.latest
+            )
+        ).geturl()
+
+    def _binary_path(self):
+        return "qjs"
 
 
 # ------------------------------------------------------------------------------
 
 __runtimes__ = {
-    cls.key(): cls for cls in (BunRuntime, DenoRuntime, QuickJSRuntime)
+    (v := cls()).key: v
+    for cls in (BunRuntime, DenoRuntime, NodeRuntime, QuickJSRuntime)
 }
 
 
@@ -175,8 +207,11 @@ def infos():
     return {k: v.info() for k, v in __runtimes__.items()}
 
 
-def runtimes(key="deno"):
-    for k, v in __runtimes__.items():
-        if v.installed() or (k == key):
-            v = v()
-    return {k: v.runtime() for k, v in __runtimes__.items() if v.installed()}
+def runtimes(default="deno"):
+    try:
+        default = __runtimes__[default]
+    except KeyError:
+        raise RuntimeError(f"JavaScript runtime '{default}' not found") from None
+    else:
+        default.check()
+    return {k: v.runtime() for k, v in __runtimes__.items() if v.installed}

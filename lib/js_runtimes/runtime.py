@@ -7,6 +7,7 @@ import pathlib
 import shutil
 import stat
 import subprocess
+import tarfile
 import traceback
 import urllib
 import zipfile
@@ -33,60 +34,41 @@ __headers__ = {"User-Agent": "Mozilla/5.0"}
 
 
 # ------------------------------------------------------------------------------
-
-def opener(func):
-    def wrapper(cls, *args, **kwargs):
-        _opener = urllib.request._opener
-        urllib.request.install_opener(cls.__opener__)
-        try:
-            return func(cls, *args, **kwargs)
-        finally:
-            urllib.request.install_opener(_opener)
-    return wrapper
-
-
-# ------------------------------------------------------------------------------
 # Runtime
 
 class Runtime(abc.ABC):
 
-    # --------------------------------------------------------------------------
-
-    __opener__ = urllib.request.build_opener()
-
-    @classmethod
-    @opener
-    def __urlopen__(cls, *args, **kwargs):
-        return urllib.request.urlopen(*args, **kwargs)
-
-    @classmethod
-    @opener
-    def __urlretrieve__(cls, *args, **kwargs):
-        return urllib.request.urlretrieve(*args, **kwargs)
-
-    # --------------------------------------------------------------------------
-
-    @classmethod
-    def __log__(cls, msg, level=xbmc.LOGINFO):
+    @staticmethod
+    def __log__(msg, level=xbmc.LOGINFO):
         xbmc.log(f"[{__addon_id__}] {msg}", level=level)
 
-    @classmethod
-    def __run__(cls, *args, check=True):
+    @staticmethod
+    def __run__(*args, check=True):
         return subprocess.run(
             args, check=check, stdout=subprocess.PIPE, text=True
         ).stdout.strip()
 
-    # --------------------------------------------------------------------------
-
-    @classmethod
-    def __localize__(cls, _id_):
+    @staticmethod
+    def __localize__(_id_):
         return __addon__.getLocalizedString(_id_)
 
-    @classmethod
-    def __message__(cls, _id_, *args):
-        return cls.__localize__(_id_).format(*args)
+    # --------------------------------------------------------------------------
+
+    @staticmethod
+    def __progress_create__(heading):
+        __progress__.create(__addon_name__, heading)
+
+    @staticmethod
+    def __progress_update__(blocks_count, block_size, total_size):
+        __progress__.update(((blocks_count * block_size) * 100) // total_size)
+
+    @staticmethod
+    def __progress_close__():
+        __progress__.close()
 
     # --------------------------------------------------------------------------
+
+    __opener__ = urllib.request.build_opener()
 
     @classmethod
     def __init_subclass__(cls, **kwargs):
@@ -102,200 +84,196 @@ class Runtime(abc.ABC):
             infos.setdefault("headers", __headers__).items()
         )
 
-    @classmethod
-    def key(cls):
-        return cls.__infos__["key"]
+    # --------------------------------------------------------------------------
 
-    @classmethod
-    def name(cls):
-        return cls.__infos__["name"]
+    @abc.abstractmethod
+    def _current_version_args(self):
+        raise NotImplementedError
 
-    @classmethod
-    def _path(cls):
-        return cls.__infos__["path"]
+    @abc.abstractmethod
+    def _latest_version_url(self):
+        raise NotImplementedError
 
-    @classmethod
-    def path(cls):
-        return f"{cls._path()}"
+    @abc.abstractmethod
+    def _download_url(self):
+        raise NotImplementedError
 
-    @classmethod
-    def _url(cls):
-        return cls.__infos__["url"]
-
-    @classmethod
-    def url(cls):
-        return cls._url().geturl()
-
-    @classmethod
-    def version(cls):
-        return cls.current()
+    @abc.abstractmethod
+    def _binary_path(self):
+        raise NotImplementedError
 
     # --------------------------------------------------------------------------
 
-    __current__ = None
+    @property
+    def key(self):
+        return self.__infos__["key"]
 
-    @classmethod
-    def _get_current(cls):
-        args, kwargs = cls._current()
-        return cls.__run__(cls.path(), *args, **kwargs)
+    @property
+    def name(self):
+        return self.__infos__["name"]
 
-    @classmethod
-    def current(cls):
-        if not cls.__current__:
-            cls.__current__ =  cls._get_current()
-        return cls.__current__
+    @property
+    def _url(self):
+        return self.__infos__["url"]
+
+    @property
+    def url(self):
+        return self._url().geturl()
+
+    @property
+    def _path(self):
+        return self.__infos__["path"]
+
+    @property
+    def path(self):
+        return f"{self._path}"
+
+    @property
+    def installed(self):
+        return ((path := self._path).is_file() and os.access(path, os.X_OK))
+
+    @property
+    def version(self):
+        if self.installed:
+            return self.current
 
     # --------------------------------------------------------------------------
 
-    __latest__ = None
+    def _get_current(self):
+        args, kwargs = self._current_version_args()
+        return self.__run__(self.path, *args, **kwargs)
 
-    @classmethod
-    def _get_latest(cls):
-        with cls.__urlopen__(
-            cls._url()._replace(path=cls._latest()).geturl()
-        ) as response:
+    @property
+    def current(self):
+        if not self.__current__:
+            self.__current__ =  self._get_current()
+        return self.__current__
+
+    # --------------------------------------------------------------------------
+
+    def _get_latest(self):
+        with urllib.request.urlopen(self._latest_version_url()) as response:
             return response.read().decode("utf-8").strip()
 
-    @classmethod
-    def latest(cls):
-        if not cls.__latest__:
-            cls.__latest__ = cls._get_latest()
-        return cls.__latest__
+    @property
+    def latest(self):
+        if not self.__latest__:
+            self.__latest__ = self._get_latest()
+        return self.__latest__
 
     # --------------------------------------------------------------------------
 
-    __label__ = None
+    def _version(self, version):
+        return Version(version)
 
-    @classmethod
-    def label(cls, _id_):
-        if not cls.__label__:
-            cls.__label__ = f"{cls.name()} {cls.latest()}"
-        return cls.__message__(_id_, cls.__label__)
+    def _msg(self, _id_, *args):
+        return self.__localize__(_id_).format(*args)
 
-    # --------------------------------------------------------------------------
+    def _label(self, _id_):
+        if not self.__label__:
+            self.__label__ = f"{self.name} {self.latest}"
+        return self._msg(_id_, self.__label__)
 
-    __confirmed__ = None
-
-    @classmethod
-    def confirmed(cls):
-        if cls.__confirmed__ is None:
-            cls.__confirmed__ = xbmcgui.Dialog().yesno(
-                __addon_name__, cls.label(30002)
-            )
-        return cls.__confirmed__
-
-    # --------------------------------------------------------------------------
-
-    @classmethod
-    def progress_create(cls):
-        __progress__.create(__addon_name__, cls.label(30004))
-
-    @classmethod
-    def progress_update(cls, count, size, total):
-        __progress__.update(((count * size) * 100) // total)
-
-    @classmethod
-    def progress_close(cls):
-        __progress__.close()
-
-    @classmethod
-    def target(cls):
-        return cls._url()._replace(path=f"{cls._target()}.zip").geturl()
-
-    # --------------------------------------------------------------------------
-
-    @classmethod
-    def installed(cls):
-        return ((path := cls._path()).is_file() and os.access(path, os.X_OK))
-
-    @classmethod
-    def outdated(cls):
+    def _download(self, url):
+        self.__progress_create__(self._label(30004))
         try:
-            return (cls._version(cls.current()) < cls._version(cls.latest()))
+            path, _ = urllib.request.urlretrieve(
+                url, reporthook=self.__progress_update__
+            )
+            return path
+        finally:
+            self.__progress_close__()
+
+    def _extract(self, path):
+        if zipfile.is_zipfile(path):
+            with zipfile.ZipFile(path, "r") as zip_file:
+                return zip_file.read(self._binary_path())
+        elif tarfile.is_tarfile(path):
+            with tarfile.open(path, "r") as tar_file:
+                return tar_file.extractfile(self._binary_path()).read()
+        else:
+            raise RuntimeError("Unsupported archive type")
+
+    @property
+    def outdated(self):
+        try:
+            return (self._version(self.current) < self._version(self.latest))
         except Exception:
-            msg = cls.__message__(30007, cls.name())
-            cls.__log__(
-                f"{msg}:\n{traceback.format_exc()}", level=xbmc.LOGERROR
+            self.__log__(
+                f"{self._msg(30007, self.name)}:\n{traceback.format_exc()}",
+                level=xbmc.LOGERROR
             )
             return False
 
-    @classmethod
-    def install(cls):
-        cls.__log__(cls.label(30003))
-        cls.progress_create()
+    @property
+    def confirmed(self):
+        if self.__confirmed__ is None:
+            try:
+                label = self._label(30002)
+            except Exception:
+                self.__log__(
+                    f"{self._msg(30009, self.name)}:\n{traceback.format_exc()}",
+                    level=xbmc.LOGERROR
+                )
+            else:
+                self.__confirmed__ = xbmcgui.Dialog().yesno(
+                    __addon_name__, label
+                )
+        return self.__confirmed__
+
+    def install(self):
+        self.__log__(self._label(30003))
+        path = self._download(self._download_url())
         try:
-            path, _ = cls.__urlretrieve__(
-                cls.target(), reporthook=cls.progress_update
-            )
+            os.makedirs(self._path.parent, exist_ok=True)
+            self._path.write_bytes(self._extract(path))
+            self._path.chmod(__mode__)
         finally:
-            cls.progress_close()
-        os.makedirs(cls._path().parent, exist_ok=True)
-        with zipfile.ZipFile(path, "r") as zip_file:
-            cls._path().write_bytes(
-                zip_file.read(f"{pathlib.Path(*cls._zip_name())}")
-            )
-        pathlib.Path(path).unlink()
-        cls._path().chmod(__mode__)
-        cls.__current__ = None
-        xbmcgui.Dialog().ok(__addon_name__, cls.label(30005))
+            pathlib.Path(path).unlink()
+        self.__current__ = None
+        self.__log__((msg := self._label(30005)))
+        xbmcgui.Dialog().ok(__addon_name__, msg)
 
-    @classmethod
-    def uninstall(cls):
-        shutil.rmtree(cls._path().parent)
-        xbmcgui.Dialog().ok(__addon_name__, cls.__message__(30006, cls.name()))
-
-    # --------------------------------------------------------------------------
-
-    @classmethod
-    def _version(cls, version):
-        return Version(version)
-
-    @classmethod
-    def _zip_name(cls):
-        return (cls.__infos__["bin"],)
-
-    @classmethod
-    @abc.abstractmethod
-    def _current(cls):
-        raise NotImplementedError
-
-    @classmethod
-    @abc.abstractmethod
-    def _latest(cls):
-        raise NotImplementedError
-
-    @classmethod
-    @abc.abstractmethod
-    def _target(cls):
-        raise NotImplementedError
-
-    # --------------------------------------------------------------------------
-
-    @classmethod
-    def info(cls):
-        result = dict(
-            {k: getattr(cls, k)() for k in ("name", "url")},
-            installed=(installed := cls.installed())
-        )
-        if installed:
-            result.update({k: getattr(cls, k)() for k in ("path", "version")})
-        return result
-
-    @classmethod
-    def runtime(cls):
-        return {"path": cls.path()}
+    def check(self):
+        _opener = urllib.request._opener
+        urllib.request.install_opener(self.__opener__)
+        try:
+            if (((not self.installed) or self.outdated) and self.confirmed):
+                try:
+                    self.install()
+                except Exception:
+                    msg = self._msg(30008, self.name)
+                    self.__log__(
+                        f"{msg}:\n{traceback.format_exc()}", level=xbmc.LOGERROR
+                    )
+                    xbmcgui.Dialog().notification(
+                        __addon_name__, msg, xbmcgui.NOTIFICATION_ERROR
+                    )
+        finally:
+            urllib.request.install_opener(_opener)
 
     # --------------------------------------------------------------------------
 
     def __init__(self):
-        if (((not self.installed()) or self.outdated()) and self.confirmed()):
-            try:
-                self.install()
-            except Exception:
-                msg = self.__message__(30008, self.name())
-                self.__log__(
-                    f"{msg}:\n{traceback.format_exc()}", level=xbmc.LOGERROR
-                )
-                xbmcgui.Dialog().notification(
-                    __addon_name__, msg, xbmcgui.NOTIFICATION_ERROR
-                )
+        self.__current__ = None
+        self.__latest__ = None
+        self.__label__ = None
+        self.__confirmed__ = None
+        #msg = f", installed: {(installed := self.installed)}"
+        #if installed:
+        #    self.check()
+        #    msg = f"{msg}, version: {self.version}"
+        #self.__log__(f"{self._msg(30001, self.name)}{msg}")
+
+    # --------------------------------------------------------------------------
+
+    def info(self):
+        installed = self.installed
+        result = dict(name=self.name, installed=installed)
+        if installed:
+            result.update({k: getattr(self, k) for k in ("path", "version")})
+        return result
+
+    def runtime(self):
+        if self.installed:
+            return {"path": self.path}
