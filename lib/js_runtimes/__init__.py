@@ -4,7 +4,7 @@
 import json
 import platform
 
-from .runtime import Runtime
+from ._runtime import Runtime
 
 
 # ------------------------------------------------------------------------------
@@ -197,30 +197,35 @@ class QuickJSRuntime(Runtime):
 
 # ------------------------------------------------------------------------------
 
-__runtimes__ = {
-    (v := cls()).key: v
-    for cls in (BunRuntime, DenoRuntime, NodeRuntime, QuickJSRuntime)
-}
+class Runtimes(dict):
+
+    def __missing__(self, key):
+        raise RuntimeError(f"JavaScript runtime '{key}' not found")
+
+    def __init__(self, *runtimes):
+        super().__init__((rt._key(), rt()) for rt in runtimes)
+
+
+__runtimes__ = Runtimes(BunRuntime, DenoRuntime, NodeRuntime, QuickJSRuntime)
+
+
+# ------------------------------------------------------------------------------
+
+def info(key):
+    return __runtimes__[key].info()
+
+def runtime(key):
+     (rt := __runtimes__[key]).check()
+     if rt.installed:
+        return {key: rt.runtime()}
+
+def uninstall(key):
+    __runtimes__[key].uninstall()
 
 
 def infos():
-    return {k: v.info() for k, v in __runtimes__.items()}
-
+    return {k: rt.info() for k, rt in __runtimes__.items()}
 
 def runtimes(key="deno"):
-    try:
-        rt = __runtimes__[key]
-    except KeyError:
-        raise RuntimeError(f"JavaScript runtime '{key}' not found") from None
-    else:
-        rt.check()
-    return {k: v.runtime() for k, v in __runtimes__.items() if v.installed}
-
-
-def uninstall(key):
-    try:
-        rt = __runtimes__[key]
-    except KeyError:
-        raise RuntimeError(f"JavaScript runtime '{key}' not found") from None
-    else:
-        rt.uninstall()
+    __runtimes__[key].check()
+    return {k: rt.runtime() for k, rt in __runtimes__.items() if rt.installed}

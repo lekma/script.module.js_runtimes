@@ -9,7 +9,8 @@ import stat
 import subprocess
 import tarfile
 import traceback
-import urllib
+import urllib.parse
+import urllib.request
 import zipfile
 
 import xbmc, xbmcaddon, xbmcgui, xbmcvfs
@@ -104,9 +105,13 @@ class Runtime(abc.ABC):
 
     # --------------------------------------------------------------------------
 
+    @classmethod
+    def _key(cls):
+        return cls.__infos__["key"]
+
     @property
     def key(self):
-        return self.__infos__["key"]
+        return self._key()
 
     @property
     def name(self):
@@ -118,7 +123,7 @@ class Runtime(abc.ABC):
 
     @property
     def url(self):
-        return self._url().geturl()
+        return self._url.geturl()
 
     @property
     def _path(self):
@@ -263,19 +268,14 @@ class Runtime(abc.ABC):
         self.__latest__ = None
         self.__label__ = None
         self.__confirmed__ = None
-        #msg = f", installed: {(installed := self.installed)}"
-        #if installed:
-        #    self.check()
-        #    msg = f"{msg}, version: {self.version}"
-        #self.__log__(f"{self._msg(30001, self.name)}{msg}")
 
     # --------------------------------------------------------------------------
 
     def info(self):
         installed = self.installed
-        result = dict(name=self.name, installed=installed)
+        result = dict(name=self.name, installed=installed, url=self.url)
         if installed:
-            result.update({k: getattr(self, k) for k in ("path", "version")})
+            result.update((k, getattr(self, k)) for k in ("path", "version"))
         return result
 
     def runtime(self):
