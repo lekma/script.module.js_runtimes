@@ -157,8 +157,12 @@ class Runtime(abc.ABC):
     # --------------------------------------------------------------------------
 
     def _get_latest(self):
-        with urllib.request.urlopen(self._latest_version_url()) as response:
-            return response.read().decode("utf-8").strip()
+        xbmc.executebuiltin("ActivateWindow(busydialognocancel)")
+        try:
+            with urllib.request.urlopen(self._latest_version_url()) as response:
+                return response.read().decode("utf-8").strip()
+        finally:
+            xbmc.executebuiltin("Dialog.Close(busydialognocancel)")
 
     @property
     def latest(self):

@@ -214,9 +214,12 @@ __runtimes__ = Runtimes(BunRuntime, DenoRuntime, NodeRuntime, QuickJSRuntime)
 def info(key):
     return __runtimes__[key].info()
 
-def runtime(key):
-     (rt := __runtimes__[key]).check()
-     if rt.installed:
+def runtime(key, force=False):
+    rt = __runtimes__[key]
+    if force:
+        rt.__init__()
+    rt.check()
+    if rt.installed:
         return rt.runtime()
 
 def uninstall(key):
