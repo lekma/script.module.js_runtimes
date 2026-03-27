@@ -217,7 +217,7 @@ def info(key):
 def runtime(key):
      (rt := __runtimes__[key]).check()
      if rt.installed:
-        return {key: rt.runtime()}
+        return rt.runtime()
 
 def uninstall(key):
     __runtimes__[key].uninstall()
