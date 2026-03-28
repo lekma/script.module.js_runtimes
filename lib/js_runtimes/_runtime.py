@@ -2,6 +2,7 @@
 
 
 import abc
+import contextlib
 import os
 import pathlib
 import shutil
@@ -16,6 +17,17 @@ import zipfile
 import xbmc, xbmcaddon, xbmcgui, xbmcvfs
 
 from packaging.version import Version
+
+
+# ------------------------------------------------------------------------------
+
+@contextlib.contextmanager
+def __busy__():
+    xbmc.executebuiltin("ActivateWindow(busydialognocancel)")
+    try:
+        yield
+    finally:
+        xbmc.executebuiltin("Dialog.Close(busydialognocancel)")
 
 
 # ------------------------------------------------------------------------------
@@ -157,12 +169,9 @@ class Runtime(abc.ABC):
     # --------------------------------------------------------------------------
 
     def _get_latest(self):
-        xbmc.executebuiltin("ActivateWindow(busydialognocancel)")
-        try:
+        with __busy__():
             with urllib.request.urlopen(self._latest_version_url()) as response:
                 return response.read().decode("utf-8").strip()
-        finally:
-            xbmc.executebuiltin("Dialog.Close(busydialognocancel)")
 
     @property
     def latest(self):
@@ -194,8 +203,7 @@ class Runtime(abc.ABC):
             self.__progress_close__()
 
     def _extract(self, path):
-        xbmc.executebuiltin("ActivateWindow(busydialognocancel)")
-        try:
+        with __busy__():
             if zipfile.is_zipfile(path):
                 with zipfile.ZipFile(path, "r") as zip_file:
                     return zip_file.read(self._binary_path())
@@ -204,8 +212,6 @@ class Runtime(abc.ABC):
                     return tar_file.extractfile(self._binary_path()).read()
             else:
                 raise RuntimeError("Unsupported archive type")
-        finally:
-            xbmc.executebuiltin("Dialog.Close(busydialognocancel)")
 
     @property
     def outdated(self):
