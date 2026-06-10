@@ -206,7 +206,8 @@ class Runtimes(dict):
         super().__init__((rt._key(), rt()) for rt in runtimes)
 
 
-__runtimes__ = Runtimes(BunRuntime, DenoRuntime, NodeRuntime, QuickJSRuntime)
+__runtimes__ = Runtimes(DenoRuntime, NodeRuntime, QuickJSRuntime)
+__deprecated__ = Runtimes(BunRuntime)
 
 
 # ------------------------------------------------------------------------------
@@ -215,12 +216,15 @@ def info(key):
     return __runtimes__[key].info()
 
 def runtime(key, force=False):
-    rt = __runtimes__[key]
-    if force:
-        rt.__init__()
-    rt.check()
-    if rt.installed:
-        return rt.runtime()
+    if (rt := __deprecated__.get(key)):
+        rt.uninstall()
+    else:
+        rt = __runtimes__[key]
+        if force:
+            rt.__init__()
+        rt.check()
+        if rt.installed:
+            return rt.runtime()
 
 def uninstall(key):
     __runtimes__[key].uninstall()

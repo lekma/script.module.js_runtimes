@@ -293,6 +293,7 @@ class Runtime(abc.ABC):
             return {"path": self.path}
 
     def uninstall(self):
-        shutil.rmtree(self._path.parent)
-        xbmcgui.Dialog().ok(__addon_name__, self._msg(30006, self.name))
-        self.__init__()
+        if self.installed:
+            shutil.rmtree(self._path.parent)
+            xbmcgui.Dialog().ok(__addon_name__, self._msg(30006, self.name))
+            self.__init__()
